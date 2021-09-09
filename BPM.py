@@ -12,7 +12,7 @@ NumberOfPointsRadia = 501
 Wavelength = 1030*1e-3 #um
 RefractionIndex = 1
 CalculationLength = 1e5 #um
-NumberOfPointsLength = 1001
+NumberOfPointsLength = 10000
 Waist = 100 #um
 waistPosition = 0
 
@@ -72,8 +72,8 @@ matOnes = np.diagflat(np.ones(NumberOfPointsRadia))
 matbackward = matOnes[1:,1:] - mat[1:, 1:]/2
 matforward = matOnes[1:,1:] + mat[1:, 1:]/2
 
-#matforward = sps.csr_matrix(matforward)
-#matbackward = sps.csr_matrix(matbackward)
+matforward = sps.csr_matrix(matforward)
+matbackward = sps.csr_matrix(matbackward)
 
 #x = spl.spsolve(mat, matrixRZ[0,:])
 
@@ -88,7 +88,7 @@ for i in range(1, NumberOfPointsLength):
     #matrixRZ[i, 1:] = np.linalg.solve(matbackward, 
     #                                 np.dot(matforward, matrixRZ[i-1, 1:]))
     
-    
+    matrixRZ[i, 1:] = spl.spsolve(matbackward, matforward*matrixRZ[i-1, 1:])
     
     matrixRZ[i, 0] = 18/11*matrixRZ[i,1] - 9/11*matrixRZ[i,2] + 2/11*matrixRZ[i,3]
 print(time.time()- start)
