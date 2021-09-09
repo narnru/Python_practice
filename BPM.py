@@ -23,6 +23,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import scipy.sparse as sps
 import scipy.sparse.linalg as spl
+import mpl_interactions.ipyplot as iplt
 # derived parameters
 
 k = 2*np.pi/Wavelength #1/mm wavenumber in vacuum
@@ -63,16 +64,23 @@ rp1z = -A/R[1:NumberOfPointsRadia]/StepR/2 - A/StepR**2
 rm1z = A/R[1:NumberOfPointsRadia]/StepR/2 - A/StepR**2
 rz = A*2*np.ones(500)/StepR**2
 mat = np.diagflat(rp1z, 1) + np.diagflat(rm1z, -1) + np.diagflat(rz, 0)
-mat[1,1] = mat[1,1] + 4/3*mat[1,0]
-mat[1,2] = mat[1,2] - 1/3*mat[1,0]
+#mat[1,1] = mat[1,1] + 4/3*mat[0,1]
+#mat[2,1] = mat[2,1] - 1/3*mat[0,1]
+matOnes = np.diagflat(np.ones(500))
 
-mat = sps.csr_matrix(mat)
-matOnes = sps.csr_matrix(np.diagflat(np.ones(500)))
-x = spl.spsolve(mat, matrixRZ[0,:])
+#mat = sps.csr_matrix(mat)
+#matOnes = sps.csr_matrix(np.diagflat(np.ones(500)))
+#x = spl.spsolve(mat, matrixRZ[0,:])
 
-for i in range(2, NumberOfPointsLength):
-    i
-
+#Нужно аккуратно разобраться что на что умножается. А то трэш какой то
 
 
-plt.plot(R, np.abs(matrixRZ[0,:]))
+for i in range(1, NumberOfPointsLength):
+    matrixRZ[i] = np.dot(matrixRZ[i-1], (matOnes + mat))
+    matrixRZ[i, 0] = 18/11*matrixRZ[i,1] - 9/11*matrixRZ[i,2] + 2/11*matrixRZ[i,3]
+
+def plotter(l):
+    return matrixRZ[round(l)]
+
+fig1, ax1 = plt.subplots()
+controls1 = iplt.plot(plotter, l = np.linspace(0, NumberOfPointsLength), )
