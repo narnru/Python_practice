@@ -75,21 +75,27 @@ matforward = matOnes[1:,1:] + mat[1:, 1:]/2
 matforward = sps.csr_matrix(matforward)
 matbackward = sps.csr_matrix(matbackward)
 
-#x = spl.spsolve(mat, matrixRZ[0,:])
 
-#Нужно аккуратно разобраться что на что умножается. А то трэш какой то
 
 start = time.time()
 
+#actual calculation
 
 for i in range(1, NumberOfPointsLength):
+    # backward euler method
     #matrixRZ[i, 1:] = np.linalg.solve((matOnes[1:,1:] - mat[1:, 1:]), matrixRZ[i-1, 1:])
+    
+    #forward euler method
     #matrixRZ[i, 1:] = np.dot((matOnes[1:,1:] + mat[1:, 1:]), matrixRZ[i-1, 1:])
+    
+    #crank-nicolson method
     #matrixRZ[i, 1:] = np.linalg.solve(matbackward, 
     #                                 np.dot(matforward, matrixRZ[i-1, 1:]))
     
+    #sparse matrix crank-nicolson method
     matrixRZ[i, 1:] = spl.spsolve(matbackward, matforward*matrixRZ[i-1, 1:])
     
+    #calculation of 0 value 3d order because why not
     matrixRZ[i, 0] = 18/11*matrixRZ[i,1] - 9/11*matrixRZ[i,2] + 2/11*matrixRZ[i,3]
 print(time.time()- start)
 def plotter(l):
