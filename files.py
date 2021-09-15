@@ -15,8 +15,8 @@ data.__next__()
 for elem in data:
     print(elem)
     wavelength += [float(elem[0])] 
-    absorptionCrossSection += [float(elem[4])]
-    emissionCrossSection += [float(elem[3])]
+    absorptionCrossSection += [float(elem[10])]
+    emissionCrossSection += [float(elem[9])]
 
 
 import matplotlib.pyplot as plt
