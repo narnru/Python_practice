@@ -6,7 +6,7 @@ Created on Tue Sep 14 20:26:51 2021
 """
 #amplifier/laser parameters
 #%%
-Length = 1 #m
+Length = 5 #m
 NumberOfStepZ = 1000
 ActiveAreaRadia = 6e-6 #m
 ActiveAreaRadiaPump = 62e-6 #m
@@ -77,6 +77,8 @@ concentration = concentrationppm * 6.62e22 #1/m^3
 # plt.plot(Z, signalZ/signalCoef)
 # # plt.plot(Z, pumpZ/pumpCoef)
 # testDataSave = signalZ/signalCoef
+
+
 #%%
 Z = np.linspace(0, Length, NumberOfStepZ)
 StepZ = Z[1] #m
@@ -84,10 +86,9 @@ StepZ = Z[1] #m
 signalZ = signalConcentration * np.ones(NumberOfStepZ)
 pumpZ = pumpConcentration * np.ones(NumberOfStepZ)
 signalZback = signalConcentration * np.ones(NumberOfStepZ)
-pumpZback = pumpConcentration * np.ones(NumberOfStepZ)
+pumpZback = pumpConcentration * np.ones(NumberOfStepZ)/2
 inversionZ = np.zeros(NumberOfStepZ)
 inversionStart = np.zeros(NumberOfStepZ)
-start = time.time()
 lastAttempt = [0]
 
 class crossSection:
@@ -115,7 +116,50 @@ def calculateInv(signal, pump, sCS:crossSection, pCS:crossSection):
 
 #attempt to do two way amplifier
 
+#start = time.time()
+       
+# for j in range(100):
+#     inversionStart = inversionZ
+#     for i in range(1, NumberOfStepZ):        
+#         signalZ[i] = signalZ[i-1] * np.exp((
+#             (absorptionSignalCrossection + emissionSignalCrossection)*(inversionZ[i] + inversionZ[i-1])/2 - 
+#             concentration*absorptionSignalCrossection)*StepZ)
+#         pumpZ[i] = pumpZ[i-1] * (1 + signalArea/pumpArea * np.expm1((
+#             (absorptionPumpCrossection + emissionPumpCrossection)*(inversionZ[i] + inversionZ[i-1])/2 - 
+#             concentration*absorptionPumpCrossection)*StepZ))
+
+#     inversionZ = (concentration * calculateInv([signalZ, signalZback], [pumpZ, pumpZback], signalCS, pumpCS))
         
+#     for i in range(1, NumberOfStepZ):
+#         signalZback[-i-1] =  signalZback[-i] * np.exp((
+#             (absorptionSignalCrossection + emissionSignalCrossection)*(inversionZ[-i-1] + inversionZ[-i])/2 - 
+#             concentration*absorptionSignalCrossection)*StepZ)
+#         pumpZback[-i-1] =  pumpZback[-i] * (1 + signalArea/pumpArea * np.expm1((
+#             (absorptionPumpCrossection + emissionPumpCrossection)*(inversionZ[-i] + inversionZ[-i-1])/2 - 
+#             concentration*absorptionPumpCrossection)*StepZ))
+#     inversionZ = (concentration * calculateInv([signalZ, signalZback], [pumpZ, pumpZback], signalCS, pumpCS))
+
+#     lastAttempt += [max(abs(inversionStart - inversionZ))]
+#     print(lastAttempt[-1]/max(inversionStart))
+#     plt.plot(Z, (inversionZ)/max(inversionZ))
+#     if lastAttempt[-1]/max(inversionStart) < 1e-3:
+#         break
+# fig1 = plt.figure()
+# plt.plot(Z, signalZ/signalCoef)
+# plt.plot(Z, signalZback/signalCoef)
+# fig2 = plt.figure()
+# plt.plot(Z, pumpZ/pumpCoef)
+# plt.plot(Z, pumpZback/pumpCoef)
+# fig3 = plt.figure()
+# plt.plot(Z, inversionZ)
+# print('time ', time.time()- start)
+
+#%%
+RefractionLeft = 1
+RefractionRight = 0.6
+start = time.time()
+att = [0];
+
 for j in range(100):
     inversionStart = inversionZ
     for i in range(1, NumberOfStepZ):        
@@ -127,7 +171,7 @@ for j in range(100):
             concentration*absorptionPumpCrossection)*StepZ))
 
     inversionZ = (concentration * calculateInv([signalZ, signalZback], [pumpZ, pumpZback], signalCS, pumpCS))
-        
+    signalZback[-1] = signalZ[-1] * RefractionRight
     for i in range(1, NumberOfStepZ):
         signalZback[-i-1] =  signalZback[-i] * np.exp((
             (absorptionSignalCrossection + emissionSignalCrossection)*(inversionZ[-i-1] + inversionZ[-i])/2 - 
@@ -136,13 +180,17 @@ for j in range(100):
             (absorptionPumpCrossection + emissionPumpCrossection)*(inversionZ[-i] + inversionZ[-i-1])/2 - 
             concentration*absorptionPumpCrossection)*StepZ))
     inversionZ = (concentration * calculateInv([signalZ, signalZback], [pumpZ, pumpZback], signalCS, pumpCS))
-    # if (j != 0 and j%2 == 1):
-    #     inversionZ = (2*inversionZ/3 + inversionStart/3)
+    signalZ[0] = signalZback[0]*RefractionLeft
     lastAttempt += [max(abs(inversionStart - inversionZ))]
-    print(lastAttempt[-1]/max(inversionStart))
-    plt.plot(Z, (inversionZ)/max(inversionZ))
-    if lastAttempt[-1]/max(inversionStart) < 1e-3:
+    att += [(signalZ[-1]-signalZback[-1])/signalCoef]
+    print(abs(att[-1]-att[-2]))
+    if abs(att[-1]-att[-2]) < 1e-10:
         break
+totalEnergy = ((pumpZ[-1]+pumpZback[0])/pumpCoef +
+           (-signalZ[0]+signalZback[0])/signalCoef + 
+           (signalZ[-1]-signalZback[-1])/signalCoef
+           + inversionZ.sum()/levelLifespan*StepZ*signalArea*scc.h*scc.c/signalWavelength)
+
 fig1 = plt.figure()
 plt.plot(Z, signalZ/signalCoef)
 plt.plot(Z, signalZback/signalCoef)
@@ -152,7 +200,3 @@ plt.plot(Z, pumpZback/pumpCoef)
 fig3 = plt.figure()
 plt.plot(Z, inversionZ)
 print('time ', time.time()- start)
-#%%
-test = [signalZ]
-for each in test:
-    test1 = each
