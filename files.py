@@ -2,9 +2,6 @@
 """
 Created on Sun Sep 12 19:23:52 2021
 """
-
-
-
 import csv
 import numpy as np
 import matplotlib.pyplot as plt
@@ -13,7 +10,7 @@ def csv_crossection_reader(file_name:str, wavelengthPosition = 0,
                            emissionCrossSectionPosition = 1, 
                            absorptionCrossSectionPosition = 2, 
                            delim = ';', start = 1):
-    """Handling a reading crossections data from csv files. Expected to be used for amplifier calculations
+    """Handling of reading crossections data from csv files. Expected to be used for amplifier calculations
     
     Returns a list of 3 ndarrays. Zero one is wavelength, first is absorption, second is emission.
     Default delimiter for excel created csv.
