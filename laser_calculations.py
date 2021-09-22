@@ -6,6 +6,7 @@ Created on Tue Sep 14 20:26:51 2021
 import numpy as np
 import scipy.constants as scc
 import matplotlib.pyplot as plt
+from numba import njit
 import time
 import copy
 import math
@@ -17,13 +18,13 @@ class Emission:
     at least easier to understand.
     """
     
-    Area : float() #m**2
-    WtoConcCoef : float() #1/m**3/W
-    Wavelength : float() #m
+    Area : float() #um**2
+    WtoConcCoef : float() #1/um**3/W
+    Wavelength : float() #um
     StartPower : float() #W
-    Distrib : np.ndarray(100) #1/m**3
-    AbsCS : float() #1/m**2
-    EmiCS : float() #1/m**2
+    Distrib : np.ndarray(100) #1/um**3
+    AbsCS : float() #um**2
+    EmiCS : float() #um**2
     
     def __init__(self, AreaRadia, Wavelength, Power, NumberOfStepZ, absorptionCS,
                  emissionCS):
@@ -32,13 +33,13 @@ class Emission:
         Conventions:
         AreaRadia - m, Wavelength - m, Power - W, crossections - 1/m**2
         """
-        self.Area = AreaRadia**2 * scc.pi
-        self.Wavelength = Wavelength
-        self.WtoConcCoef = 1 / self.Area / scc.h / scc.c**2 * self.Wavelength
+        self.Area = AreaRadia**2 * scc.pi * 1e12
+        self.Wavelength = Wavelength * 1e6
+        self.WtoConcCoef = 1 / self.Area / scc.h / scc.c**2 * self.Wavelength *1e-12
         self.StartPower = Power
-        self.Distrib = Power * self.WtoConcCoef * np.ones(NumberOfStepZ, dtype = np.float32())
-        self.AbsCS = absorptionCS
-        self.EmiCS = emissionCS
+        self.Distrib = Power * self.WtoConcCoef * np.ones(NumberOfStepZ)
+        self.AbsCS = absorptionCS * 1e12
+        self.EmiCS = emissionCS * 1e12
     
     
     
@@ -49,14 +50,23 @@ class Emission:
        
     def calculateDistrib(self, inversion, concentration, StepZ, AreaCoef = 1):
         for i in range(1, self.Distrib.size):    
-            self.Distrib[i] = self.Distrib[i-1] * (1 + AreaCoef * ((
+            self.Distrib[i] = self.Distrib[i-1] * math.exp(AreaCoef * ((
                 (self.AbsCS + self.EmiCS)*(inversion[i]+inversion[i-1])/2 - 
                 concentration*self.AbsCS)*StepZ))
-            
+    
+    def calculateDistribtest(self, inversion, concentration, StepZ, AreaCoef = 1):
+        i = 1
+        self.Distrib[i] = self.Distrib[i-1] * math.exp(AreaCoef * ((
+                (self.AbsCS + self.EmiCS)*(inversion[i]+inversion[i-1])/2 - 
+                concentration*self.AbsCS)*StepZ)) 
+        for i in range(2, self.Distrib.size):    
+            self.Distrib[i] = self.Distrib[i-2] * math.exp(AreaCoef * ((
+                (self.AbsCS + self.EmiCS)*(inversion[i] + inversion[i-2] + 4*inversion[i-1])/6 - 
+                concentration*self.AbsCS)*StepZ*2)) 
     
     def calculateDistribRev(self, inversion, concentration, StepZ, AreaCoef = 1):
         for i in range(1, self.Distrib.size):    
-            self.Distrib[-i-1] = self.Distrib[-i] * (1 + AreaCoef * ((
+            self.Distrib[-i-1] = self.Distrib[-i] * math.exp(AreaCoef * ((
                 (self.AbsCS + self.EmiCS)*(inversion[-i]+inversion[-i-1])/2 - 
                 concentration*self.AbsCS)*StepZ))
 
@@ -79,12 +89,12 @@ class Media:
         Conventions:
             Length - m, Concentration - ppm, Lifespan - s
         """
-        self.Length = Length
+        self.Length = Length * 1e6
         self.NumZ = NumberOfStepZ
         self.Points = np.linspace(0, Length, self.NumZ)
-        self.StepZ = self.Points[1] 
+        self.StepZ = self.Points[1] *1e6
         self.Inversion = np.zeros(NumberOfStepZ)
-        self.Concentration = ConcentrationPPM * 6.62e22 #1/m^3
+        self.Concentration = ConcentrationPPM * 6.62e22 * 1e-18 #1/m^3
         self.Tau = levelLifespan 
     
     def calculateInv(self, signal : list):
@@ -95,7 +105,7 @@ class Media:
         for sig in signal:
             signalAbs += sig.Distrib * sig.AbsCS
             signalEmi += sig.Distrib * sig.EmiCS
-        self.Inversion = (self.Concentration * signalAbs / (1/scc.c/self.Tau + 
+        self.Inversion = (self.Concentration * signalAbs / (1/scc.c/self.Tau/1e6 + 
                                 signalAbs + signalEmi))
 
         
@@ -110,7 +120,7 @@ def one_way_amplif(Signal : Emission, Pump : Emission, media : Media):
         media.Inversion[i-1] = (media.Concentration * 
                             (Signal.Distrib[i-1]*Signal.AbsCS + 
                             Pump.Distrib[i-1]*Pump.AbsCS) /
-                            (1/scc.c/media.Tau + 
+                            (1/scc.c/media.Tau/1e6 + 
                             Signal.Distrib[i-1]*(Signal.AbsCS + Signal.EmiCS) + 
                             Pump.Distrib[i-1]*(Pump.AbsCS + Pump.EmiCS)))
         Signal.Distrib[i] = Signal.Distrib[i-1] * math.exp(media.StepZ*(
@@ -138,7 +148,7 @@ def two_way_amplifier(Signal : Emission, SignalBack : Emission,
         Signal.calculateDistrib(media.Inversion, media.Concentration, media.StepZ)
         Pump.calculateDistrib(media.Inversion, media.Concentration, media.StepZ, Signal.Area/Pump.Area)
         
-        media.calculateInv([Signal, SignalBack, Pump, PumpBack])
+        # media.calculateInv([Signal, SignalBack, Pump, PumpBack])
             
         SignalBack.calculateDistribRev(media.Inversion, media.Concentration, media.StepZ)
         PumpBack.calculateDistribRev(media.Inversion, media.Concentration, media.StepZ, Signal.Area/Pump.Area)
@@ -146,16 +156,40 @@ def two_way_amplifier(Signal : Emission, SignalBack : Emission,
         media.calculateInv([Signal, SignalBack, Pump, PumpBack])
     
         lastAttempt += [max(abs(inversionStart - media.Inversion))]
+
         print(lastAttempt[-1]/max(inversionStart))
         if lastAttempt[-1]/max(inversionStart) < 1e-5:
+            print(j)
             break
-  
+
+# def laser(Signal : Emission, Pump : Emission, PumpBack : Emission,
+#           media : Media, Rleft : float, RRight : float):
+#     for j in range(100):
+#         inversionStart = media.Inversion
+        
+#         Signal.calculateDistrib(media.Inversion, media.Concentration, media.StepZ)
+#         Pump.calculateDistrib(media.Inversion, media.Concentration, media.StepZ, Signal.Area/Pump.Area)
+        
+#         media.calculateInv([Signal, SignalBack, Pump, PumpBack])
+            
+#         SignalBack.calculateDistribRev(media.Inversion, media.Concentration, media.StepZ)
+#         PumpBack.calculateDistribRev(media.Inversion, media.Concentration, media.StepZ, Signal.Area/Pump.Area)
+        
+#         media.calculateInv([Signal, SignalBack, Pump, PumpBack])
+
+#         inversionZ = (concentration * calculateInv([signalZ, signalZback], [pumpZ, pumpZback], signalCS, pumpCS))
+#         signalZ[0] = signalZback[0]*RefractionLeft
+#         lastAttempt += [max(abs(inversionStart - inversionZ))]
+#         att += [(signalZ[-1]-signalZback[-1])/signalCoef]
+#         print(abs(att[-1]-att[-2]))
+#         if abs(att[-1]-att[-2]) < 1e-10:
+#             break
 def main():
   
     #amplifier/laser parameters
     
     Length = 5 #m
-    NumberOfStepZ = 10000
+    NumberOfStepZ = 1000
     ActiveAreaRadia = 6e-6 #m
     ActiveAreaRadiaPump = 62.5e-6 #m
     PowerSignalIn = 0.01 #W
@@ -173,14 +207,14 @@ def main():
     concentrationppm = 1000 #ppm
       
     #derived parameters 
-    Signal = Emission(ActiveAreaRadia, signalWavelength, PowerSignalIn, NumberOfStepZ,
-                      absorptionSignalCrossection, emissionSignalCrossection)
-    Pump = Emission(ActiveAreaRadiaPump, pumpWavelength, PowerPumpIn, NumberOfStepZ,
-                    absorptionPumpCrossection, emissionPumpCrossection)
-    media = Media(Length, NumberOfStepZ, concentrationppm, levelLifespan)
+    # Signal = Emission(ActiveAreaRadia, signalWavelength, PowerSignalIn, NumberOfStepZ,
+    #                   absorptionSignalCrossection, emissionSignalCrossection)
+    # Pump = Emission(ActiveAreaRadiaPump, pumpWavelength, PowerPumpIn, NumberOfStepZ,
+    #                 absorptionPumpCrossection, emissionPumpCrossection)
+    # media = Media(Length, NumberOfStepZ, concentrationppm, levelLifespan)
     
-    one_way_amplif(Signal, Pump, media)
-    old_attempt = Signal.Distrib/Signal.WtoConcCoef
+    # one_way_amplif(Signal, Pump, media)
+    # old_attempt = Signal.Distrib/Signal.WtoConcCoef
     
     Signal = Emission(ActiveAreaRadia, signalWavelength, PowerSignalIn, NumberOfStepZ,
                       absorptionSignalCrossection, emissionSignalCrossection)
@@ -190,24 +224,24 @@ def main():
     
     
     SignalBack = copy.deepcopy(Signal)
-    SignalBack.set_power(Signal.StartPower*0)
+    SignalBack.set_power(Signal.StartPower*0.5)
     PumpBack = copy.deepcopy(Pump) 
     PumpBack.set_power(Pump.StartPower*0)
     
-    #attempt to do two way amplifier
+    # attempt to do two way amplifier
     
-    # start = time.time()
-    # two_way_amplifier(Signal, SignalBack, Pump, PumpBack, media)
-    # plt.figure()
-    # plt.plot(media.Points, Signal.Distrib/Signal.WtoConcCoef)
+    start = time.time()
+    two_way_amplifier(Signal, SignalBack, Pump, PumpBack, media)
+    plt.figure()
+    plt.plot(media.Points, Signal.Distrib/Signal.WtoConcCoef)
     # plt.plot(media.Points, old_attempt)
-    # plt.figure()
-    # plt.plot(media.Points, Pump.Distrib/Pump.WtoConcCoef)
-    # plt.plot(media.Points, PumpBack.Distrib/PumpBack.WtoConcCoef)
-    # plt.figure()
-    # plt.plot(media.Points, media.Inversion)
-    # print('time ', time.time()- start)
-
+    plt.figure()
+    plt.plot(media.Points, Pump.Distrib/Pump.WtoConcCoef)
+    plt.plot(media.Points, PumpBack.Distrib/PumpBack.WtoConcCoef)
+    plt.figure()
+    plt.plot(media.Points, media.Inversion)
+    print('time ', time.time()- start)
+main()
 def test_stepz_one_way():
     Length = 5 #m
     ActiveAreaRadia = 6e-6 #m
@@ -228,7 +262,7 @@ def test_stepz_one_way():
     resultsSP = []
     resultsInt = [[],[],[]]
     start = time.time()
-    for N in np.linspace(1, 6, 20):
+    for N in np.linspace(1, 7, 20):
         Signal = Emission(ActiveAreaRadia, signalWavelength, PowerSignalIn, round(10**N),
                           absorptionSignalCrossection, emissionSignalCrossection)
         Pump = Emission(ActiveAreaRadiaPump, pumpWavelength, PowerPumpIn, round(10**N),
@@ -251,7 +285,7 @@ def test_stepz_one_way():
     print(resultsInt[1])
     print('time ', time.time()- start)
         
-test_stepz_one_way() #looks like second order on z
+# test_stepz_one_way() #looks like second order on z
 
 def test_stepz_two_way():
     Length = 5 #m
@@ -273,22 +307,23 @@ def test_stepz_two_way():
     # resultsSP = []
     resultsInt = [[],[],[]]
     start = time.time()
-    for N in range(1, 6):
+    for N in np.linspace(1, 4, 20):
         
-        Signal = Emission(ActiveAreaRadia, signalWavelength, PowerSignalIn, 10**N,
+        Signal = Emission(ActiveAreaRadia, signalWavelength, PowerSignalIn, round(10**N),
                           absorptionSignalCrossection, emissionSignalCrossection)
-        Pump = Emission(ActiveAreaRadiaPump, pumpWavelength, PowerPumpIn, 10**N,
+        Pump = Emission(ActiveAreaRadiaPump, pumpWavelength, PowerPumpIn, round(10**N),
                         absorptionPumpCrossection, emissionPumpCrossection)
         SignalBack = copy.deepcopy(Signal)
-        SignalBack.set_power(Signal.StartPower*0)
+        SignalBack.set_power(Signal.StartPower*0.5)
         PumpBack = copy.deepcopy(Pump) 
-        PumpBack.set_power(Pump.StartPower*0)
-        media = Media(Length, 10**N, concentrationppm, levelLifespan)
+        PumpBack.set_power(Pump.StartPower*0.5)
+        media = Media(Length, round(10**N), concentrationppm, levelLifespan)
         two_way_amplifier(Signal, SignalBack, Pump, PumpBack, media)
         # resultsSP += [[media.Points, Signal.Distrib/Signal.WtoConcCoef]]
         resultsInt[0] += [N]
         # resultsInt[1] += [np.trapz(Signal.Distrib/Signal.WtoConcCoef, media.Points)]
         resultsInt[1] += [Signal.Distrib[-1]/Signal.WtoConcCoef]
+        print(10**N)
         if len(resultsInt[1]) > 1:
             resultsInt[2] += [abs(resultsInt[1][-1] - resultsInt[1][-2])] 
     # for res in resultsSP:
